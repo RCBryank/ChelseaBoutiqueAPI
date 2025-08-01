@@ -1,0 +1,6 @@
+@Chelsea_Boutique_HostAddress = http://localhost:5177
+
+GET {{Chelsea_Boutique_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
