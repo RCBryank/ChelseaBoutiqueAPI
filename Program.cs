@@ -1,8 +1,11 @@
 using Chelsea_Boutique.Models;
 using Chelsea_Boutique.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection.KeyManagement;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Diagnostics;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,15 +15,43 @@ builder.Services.AddControllers();
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
 
+builder.Services.AddSingleton<TokenProvider>();
+builder.Services.AddHttpContextAccessor();
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
         var origins = builder.Configuration.GetValue<string>("AllowedOrigins")!.Split(",");
-        policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod();
+        policy.WithOrigins("https://localhost:4200").AllowAnyHeader().AllowAnyMethod().AllowCredentials();
     });
 });
 
+
+builder.Services.AddAuthorization();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(o =>
+{
+    o.RequireHttpsMetadata = false;
+    o.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+    {
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Secret"]!)),
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        ClockSkew = TimeSpan.Zero
+    };
+
+    o.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = ctx =>
+        {
+            ctx.Request.Cookies.TryGetValue("accessToken", out var accesToken);
+            if (!string.IsNullOrEmpty(accesToken))
+                ctx.Token = accesToken;
+
+            return Task.CompletedTask;
+        }
+    };
+});
 
 var app = builder.Build();
 
@@ -32,24 +63,10 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors();
+app.UseAuthentication();
 app.UseAuthorization();
 
-app.UseCors();
 app.MapControllers();
-
-string[] passwords = { "p", "passw", "qwe#qw2!" };
-foreach (string pass in passwords)
-{
-    Debug.WriteLine("Salt generada: " + HashPasswordService.getSalt());
-}
-
-app.MapGet("/minimaltabletest", async () =>
-{
-    var url = builder.Configuration.GetValue<string>("SupabaseAPI:URL");
-    var key = builder.Configuration.GetValue<string>("SupabaseAPI:Key");
-
-    var supabase = new Supabase.Client(url, key, new Supabase.SupabaseOptions { AutoConnectRealtime = true });
-    await supabase.InitializeAsync();
-});
 
 app.Run();
