@@ -1,4 +1,5 @@
 ﻿using Chelsea_Boutique.Models;
+using Microsoft.AspNetCore.Authentication.OAuth.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -17,13 +18,15 @@ namespace Chelsea_Boutique.Services
 
             var credentials = new SigningCredentials(securitykey, SecurityAlgorithms.HmacSha256);
 
+            var claims = new[]
+            {
+                new Claim("sub", user.ID.ToString()),
+                    new Claim("email", user.Email)
+            };
+
             var tokenDescriptor = new SecurityTokenDescriptor
             {
-                Subject = new System.Security.Claims.ClaimsIdentity(
-                [
-                    new Claim(JwtRegisteredClaimNames.Sub, user.ID.ToString()),
-                    new Claim(JwtRegisteredClaimNames.Email, user.Email)
-                ]),
+                Subject = new ClaimsIdentity(claims, "custom"),
                 Expires = DateTime.UtcNow.AddMinutes(configuration.GetValue<int>("Jwt:ExpirationInMinutes")),
                 NotBefore = DateTime.UtcNow,
                 SigningCredentials = credentials,
@@ -38,5 +41,6 @@ namespace Chelsea_Boutique.Services
 
             return tokentostring;
         }
+
     }
 }
