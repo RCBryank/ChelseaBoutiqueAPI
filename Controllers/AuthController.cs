@@ -112,7 +112,7 @@ namespace Chelsea_Boutique.Controllers
                     _avatar.Filename = file.FileName;
                     _avatar.FileSizeKb = (int)file.Length / 1024;
                     _avatar.PublicPath = _uploadresult.SecureUrl.ToString();
-                    _avatar.AssetSignature = _uploadresult.Signature;
+                    _avatar.AssetSignature = _uploadresult.PublicId;
                     _avatar.ID_WebUser = _result.Model.ID;
 
                     var _resultavatar = await supabase.From<WebUserAvatar>().Insert(_avatar, new Supabase.Postgrest.QueryOptions { Returning = Supabase.Postgrest.QueryOptions.ReturnType.Representation });
@@ -169,10 +169,13 @@ namespace Chelsea_Boutique.Controllers
 
                 var Model = result.Model;
 
+                var resultavatar = await supabase.From<WebUserAvatar>().Select(x => new object[] { x.Filename, x.PublicPath }).Where(x => x.ID_WebUser == userId).Get();
+
                 WebUserProfileExtendedDetailsInfo _info = new WebUserProfileExtendedDetailsInfo(Model.Email, Model.Name, Model.MiddleName, Model.LastName, Model.Address, Model.PostalCode,
                     Model.City, Model.Country, Model.PhoneNumber, Model.PhoneNumber2,
                     Model.DateofBirth.HasValue ? Model.DateofBirth.ToString() : "",
-                    null);
+                    resultavatar.Model != null ? resultavatar.Model.Filename : "",
+                    resultavatar.Model != null ? resultavatar.Model.PublicPath : "");
 
                 return Ok(JsonConvert.SerializeObject(_info));
             }
@@ -217,6 +220,63 @@ namespace Chelsea_Boutique.Controllers
             }
         }
 
+        [HttpPut("updateprofileavatar")]
+        [Authorize]
+        public async Task<ActionResult> UpdateProfileAvatar(IFormFile newprofileavatar)
+        {
+            var supabase = new Supabase.Client(varurl, varkey, new Supabase.SupabaseOptions { AutoConnectRealtime = true });
+            await supabase.InitializeAsync();
+
+            try
+            {
+                var vUserId = User.FindFirst("sub")?.Value;
+                int userId;
+                int.TryParse(vUserId, out userId);
+
+                CloudinaryService _cloudinary = new CloudinaryService(_configuration);
+                var _resultupload = _cloudinary.UploadMedia(newprofileavatar, _configuration.GetValue<string>("CloudinaryFolders.FolderPath_AvatarProfiles"));
+                if (_resultupload.StatusCode == HttpStatusCode.OK)
+                {
+                    var result = await supabase.From<WebUserAvatar>().Select(x => new object[] { x.ID, x.AssetSignature }).Where(x => x.ID_WebUser == userId).Get();
+                    if (result.Model == null)
+                    {
+                        //-- Insertar nuevo registro
+                        WebUserAvatar _avatar = new WebUserAvatar();
+                        _avatar.Filename = newprofileavatar.FileName;
+                        _avatar.FileSizeKb = (int)newprofileavatar.Length / 1024;
+                        _avatar.PublicPath = _resultupload.SecureUrl.ToString();
+                        _avatar.AssetSignature = _resultupload.Signature;
+                        _avatar.ID_WebUser = userId;
+
+                        var _resultavatar = await supabase.From<WebUserAvatar>().Insert(_avatar, new Supabase.Postgrest.QueryOptions { Returning = Supabase.Postgrest.QueryOptions.ReturnType.Representation });
+                        return CreatedAtAction("updateprofileavatar", _resultavatar.Model);
+                    }
+                    else
+                    {
+                        //-- Borrar archivo de cloudinary
+                        var resuldelete = _cloudinary.DeleteMedia(result.Model.AssetSignature);
+
+                        //-- Actualizar registro de la tabla por nueva info del archivo subido
+                        var _resultavatar = await supabase.From<WebUserAvatar>()
+                            .Where(x => x.ID == result.Model.ID)
+                            .Set(x => x.Filename, newprofileavatar.FileName)
+                            .Set(x => x.FileSizeKb, (int)newprofileavatar.Length / 1024)
+                            .Set(x => x.PublicPath, _resultupload.SecureUrl.ToString())
+                            .Set(x => x.AssetSignature, _resultupload.PublicId)
+                            .Update();
+                        return Ok(JsonConvert.SerializeObject(_resultavatar.Model));
+                    }
+                }
+
+                return BadRequest(_resultupload.Error);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex);
+            }
+
+        }
+
         [HttpPut("updatepassword")]
         [Authorize]
         public async Task<ActionResult> UpdatePassword([FromForm] string newwebuserpassword)
@@ -248,7 +308,7 @@ namespace Chelsea_Boutique.Controllers
 
     public class WebUserProfileExtendedDetailsInfo
     {
-        public WebUserProfileExtendedDetailsInfo(string Email, string Name, string MiddleName, string LastName, string Address, string PostalCode, string City, string Country, string PhoneNumber, string PhoneNumber2, string DateofBirth, string? ProfilePhoto)
+        public WebUserProfileExtendedDetailsInfo(string Email, string Name, string MiddleName, string LastName, string Address, string PostalCode, string City, string Country, string PhoneNumber, string PhoneNumber2, string DateofBirth, string NameAvatar, string AvatarPublicPath)
         {
             this.Email = Email;
             this.Name = Name;
@@ -261,7 +321,8 @@ namespace Chelsea_Boutique.Controllers
             this.PhoneNumber = PhoneNumber;
             this.PhoneNumber2 = PhoneNumber2;
             this.DateofBirth = DateofBirth;
-            this.ProfilePhoto = ProfilePhoto;
+            this.NameAvatar = NameAvatar;
+            this.AvatarPublicPath = AvatarPublicPath;
         }
 
         public string Email { get; set; }
@@ -275,7 +336,8 @@ namespace Chelsea_Boutique.Controllers
         public string PhoneNumber { get; set; }
         public string PhoneNumber2 { get; set; }
         public string DateofBirth { get; set; }
-        public string? ProfilePhoto { get; set; }
+        public string NameAvatar { get; set; }
+        public string AvatarPublicPath { get; set; }
     }
 
     public class SignUpParameters

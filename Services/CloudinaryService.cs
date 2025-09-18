@@ -7,7 +7,7 @@ namespace Chelsea_Boutique.Services
 {
     public class CloudinaryService(IConfiguration _configuration)
     {
-        private string CloudinaryURL = _configuration.GetValue<string>("Cloudinary_URL");
+        private string CloudinaryURL = _configuration.GetValue<string>("Cloudinary_URL");// + "errorthrow";
 
         public ImageUploadResult UploadMedia(IFormFile file, string folder)
         {
@@ -24,6 +24,16 @@ namespace Chelsea_Boutique.Services
             };
 
             return cloudinary.Upload(uploadParams);
+        }
+
+        public DeletionResult DeleteMedia(string filesignature)
+        {
+            Cloudinary cloudinary = new Cloudinary(CloudinaryURL);
+            cloudinary.Api.Secure = true;
+
+            var deletionParams = new DeletionParams(filesignature);
+
+            return cloudinary.Destroy(deletionParams);
         }
     }
 }

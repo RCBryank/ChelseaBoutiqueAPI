@@ -6,7 +6,7 @@ namespace Chelsea_Boutique.Models
     [Table("webuseravatar")]
     public class WebUserAvatar : BaseModel
     {
-        [PrimaryKey("ID")]
+        [PrimaryKey("id")]
         public int ID { get; set; }
 
         [Column("filename")]
